@@ -1,0 +1,197 @@
+PROC 0
+/*------------------------------------------------------------------*/
+/* COPILOT - ISPF front end for a two-way mailbox with Copilot.     */
+/*   you -> Copilot : userid.COPILOT.REQUEST                        */
+/*   Copilot -> you : userid.COPILOT.REPLY                          */
+/* Record 1 of each data set is ID=nnnnn (the reply echoes the ID   */
+/* of the request it answers); the remaining records are text.      */
+/* Text passes through the CLIST engine, so it is folded to upper   */
+/* case in both directions. The reply is paged 12 lines at a time;  */
+/* PF7/PF8 (UP/DOWN) scroll it.                                     */
+/*------------------------------------------------------------------*/
+CONTROL NOMSG NOFLUSH NOLIST NOCONLIST NOSYMLIST
+IF &SYSISPF = ACTIVE THEN
+ELSE -
+  DO
+    WRITE COPILOT: ISPF IS REQUIRED
+    EXIT CODE(20)
+  END
+ISPEXEC CONTROL ERRORS RETURN
+SET REQDSN = &STR(&SYSUID..COPILOT.REQUEST)
+SET RSPDSN = &STR(&SYSUID..COPILOT.REPLY)
+SET NLIN = 12
+SET CPQ1 = &STR( )
+SET CPQ2 = &STR( )
+SET CPQ3 = &STR( )
+/*------------------------------------------------------------------*/
+/* First use: create both data sets                                 */
+/*------------------------------------------------------------------*/
+IF &SYSDSN('&REQDSN') = OK THEN
+ELSE -
+  DO
+    ATTRIB CPATTR LRECL(80) BLKSIZE(3120) RECFM(F B)
+    ALLOC F(CPREQ) DA('&REQDSN') NEW CATALOG REUSE +
+          SPACE(1 1) TRACKS USING(CPATTR)
+    OPENFILE CPREQ OUTPUT
+    SET CPREQ = &STR(ID=00000)
+    PUTFILE CPREQ
+    CLOSFILE CPREQ
+    FREE F(CPREQ) ATTR(CPATTR)
+  END
+IF &SYSDSN('&RSPDSN') = OK THEN
+ELSE -
+  DO
+    ATTRIB CPATTR LRECL(80) BLKSIZE(3120) RECFM(F B)
+    ALLOC F(CPRSP) DA('&RSPDSN') NEW CATALOG REUSE +
+          SPACE(1 1) TRACKS USING(CPATTR)
+    OPENFILE CPRSP OUTPUT
+    SET CPRSP = &STR(ID=00000)
+    PUTFILE CPRSP
+    SET CPRSP = &STR(No reply yet. Type a message above, press ENTER,)
+    PUTFILE CPRSP
+    SET CPRSP = &STR(then ask Copilot to check the mailbox.)
+    PUTFILE CPRSP
+    CLOSFILE CPRSP
+    FREE F(CPRSP) ATTR(CPATTR)
+  END
+/*------------------------------------------------------------------*/
+/* Read current request ID and reply, then show the panel           */
+/*------------------------------------------------------------------*/
+SET OFF = 0
+SET LASTRSP = 0
+LOOP: -
+SET CPSEQ = 0
+SET RSPID = 0
+SET I = 1
+DO WHILE &I <= &NLIN
+  SET NM = CPA&I
+  SET &&NM = &STR( )
+  SET I = &I + 1
+END
+SET EOFSW = 0
+ERROR +
+  DO
+    IF &LASTCC = 400 THEN SET EOFSW = 1
+    RETURN
+  END
+ALLOC F(CPREQ) DA('&REQDSN') SHR REUSE
+OPENFILE CPREQ INPUT
+GETFILE CPREQ
+IF &EOFSW = 0 THEN -
+  DO
+    SET CPSEQ = &SUBSTR(4:8,&STR(&CPREQ     ))
+    IF &DATATYPE(&CPSEQ) NE NUM THEN SET CPSEQ = 0
+  END
+CLOSFILE CPREQ
+FREE F(CPREQ)
+SET EOFSW = 0
+ALLOC F(CPRSP) DA('&RSPDSN') SHR REUSE
+OPENFILE CPRSP INPUT
+GETFILE CPRSP
+IF &EOFSW = 0 THEN -
+  DO
+    SET RSPID = &SUBSTR(4:8,&STR(&CPRSP     ))
+    IF &DATATYPE(&RSPID) NE NUM THEN SET RSPID = 0
+  END
+IF &RSPID NE &LASTRSP THEN SET OFF = 0
+SET LASTRSP = &RSPID
+SET TOTAL = 0
+SET PEND = &OFF + &NLIN
+DO WHILE &EOFSW = 0
+  GETFILE CPRSP
+  IF &EOFSW = 0 THEN -
+    DO
+      SET TOTAL = &TOTAL + 1
+      IF &TOTAL > &OFF AND &TOTAL <= &PEND THEN -
+        DO
+          SET K = &TOTAL - &OFF
+          SET NM = CPA&K
+          SET &&NM = &STR(&CPRSP)
+        END
+    END
+END
+CLOSFILE CPRSP
+FREE F(CPRSP)
+ERROR OFF
+IF &CPSEQ = 0 THEN -
+  SET CPSTAT = &STR(No message sent yet.)
+ELSE -
+IF &RSPID >= &CPSEQ THEN -
+  SET CPSTAT = &STR(Reply to request &CPSEQ)
+ELSE -
+  SET CPSTAT = &STR(Request &CPSEQ sent, waiting)
+IF &TOTAL > &NLIN THEN -
+  DO
+    SET FIRST = &OFF + 1
+    SET LAST = &OFF + &NLIN
+    IF &LAST > &TOTAL THEN SET LAST = &TOTAL
+    SET CPSTAT = &STR(&CPSTAT.. Lines &FIRST to &LAST of &TOTAL)
+  END
+ISPEXEC DISPLAY PANEL(COPILP1)
+SET RC = &LASTCC
+IF &RC = 8 THEN GOTO DONE
+IF &RC > 8 THEN -
+  DO
+    ISPEXEC VGET (ZERRSM ZERRLM) SHARED
+    WRITE COPILOT: PANEL COPILP1 DISPLAY ERROR, RC=&RC
+    WRITE &ZERRSM
+    WRITE &ZERRLM
+    EXIT CODE(&RC)
+  END
+/*------------------------------------------------------------------*/
+/* PF8/PF7 arrive as DOWN/UP: page through the reply                */
+/*------------------------------------------------------------------*/
+IF &STR(&ZCMD) = DOWN THEN -
+  DO
+    IF &OFF + &NLIN < &TOTAL THEN SET OFF = &OFF + &NLIN
+    SET ZCMD =
+    GOTO LOOP
+  END
+IF &STR(&ZCMD) = UP THEN -
+  DO
+    SET OFF = &OFF - &NLIN
+    IF &OFF < 0 THEN SET OFF = 0
+    SET ZCMD =
+    GOTO LOOP
+  END
+/*------------------------------------------------------------------*/
+/* Send: rewrite the request data set with the next ID              */
+/*------------------------------------------------------------------*/
+IF ( &STR(&CPQ1) > &STR( ) OR &STR(&CPQ2) > &STR( ) OR -
+     &STR(&CPQ3) > &STR( ) ) THEN -
+  DO
+    SET NEXT = &CPSEQ + 1
+    SET NEXT5 = &NEXT
+    IF &NEXT < 10000 THEN SET NEXT5 = &STR(0&NEXT)
+    IF &NEXT < 1000 THEN SET NEXT5 = &STR(00&NEXT)
+    IF &NEXT < 100 THEN SET NEXT5 = &STR(000&NEXT)
+    IF &NEXT < 10 THEN SET NEXT5 = &STR(0000&NEXT)
+    ALLOC F(CPREQ) DA('&REQDSN') OLD REUSE
+    OPENFILE CPREQ OUTPUT
+    SET STAMP = &STR(USER=&SYSUID DATE=&SYSDATE TIME=&SYSTIME)
+    SET CPREQ = &STR(ID=&NEXT5 &STAMP)
+    PUTFILE CPREQ
+    IF &STR(&CPQ1) > &STR( ) THEN -
+      DO
+        SET CPREQ = &STR(&CPQ1)
+        PUTFILE CPREQ
+      END
+    IF &STR(&CPQ2) > &STR( ) THEN -
+      DO
+        SET CPREQ = &STR(&CPQ2)
+        PUTFILE CPREQ
+      END
+    IF &STR(&CPQ3) > &STR( ) THEN -
+      DO
+        SET CPREQ = &STR(&CPQ3)
+        PUTFILE CPREQ
+      END
+    CLOSFILE CPREQ
+    FREE F(CPREQ)
+    SET CPQ1 = &STR( )
+    SET CPQ2 = &STR( )
+    SET CPQ3 = &STR( )
+  END
+GOTO LOOP
+DONE: -
+EXIT CODE(0)

@@ -1,0 +1,40 @@
+)ATTR
+ %   TYPE(TEXT)   INTENS(HIGH)
+ +   TYPE(TEXT)   INTENS(LOW)
+ #   TYPE(INPUT)  INTENS(HIGH) CAPS(ON)  JUST(LEFT)
+ _   TYPE(INPUT)  INTENS(HIGH) CAPS(ON)  JUST(LEFT)
+ !   TYPE(OUTPUT) INTENS(LOW)  CAPS(OFF) JUST(ASIS)
+ $   TYPE(OUTPUT) INTENS(HIGH) CAPS(OFF) JUST(ASIS) COLOR(GREEN)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------ COPILOT TWO-WAY MESSAGING ---------------------------
+%Command ===>#ZCMD                                                          +
++
+%Status  :$Z                                                                 +
+%Your message to Copilot:
+_Z                                                                       +
+_Z                                                                       +
+_Z                                                                       +
+%Copilot reply:
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
+!Z                                                                       +
++
++Press%ENTER+to send/refresh,%PF7/PF8+to scroll the reply,%END+to exit.
+)INIT
+  .CURSOR = CPQ1
+  .ZVARS = '(CPSTAT CPQ1 +
+             CPQ2 CPQ3 +
+             CPA1 CPA2 CPA3 CPA4 CPA5 CPA6 +
+             CPA7 CPA8 CPA9 CPA10 CPA11 CPA12)'
+  &Z = ' '
+  &ZPRIM = NO
+)END

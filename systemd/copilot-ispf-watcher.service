@@ -1,0 +1,17 @@
+[Unit]
+Description=ISPF option P mailbox responder (Copilot) for MVS TK5
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mvs-copilot-ispf
+EnvironmentFile=%h/.config/copilot-ispf/env
+# Must contain the npm-installed `copilot` (not the VS Code shim) and python3.
+Environment=PATH=%h/.nvm/versions/node/current/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/mvs-copilot-ispf/copilot_watcher.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
