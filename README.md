@@ -3,7 +3,7 @@
 An ISPF menu option (`P  COPILOT`) for MVS 3.8j / [TK5](https://github.com/mvslovers/mvs-tk5)
 that lets you talk to GitHub Copilot from a 3270 terminal.
 
-[![asciicast](https://asciinema.org/a/KXTAcGzjx2vyMBgP.svg)](https://asciinema.org/a/KXTAcGzjx2vyMBgP)
+[![demo](docs/demo.gif)
 
 The recording ([`docs/demo.cast`](docs/demo.cast), play it with
 `asciinema play docs/demo.cast`) shows a 3270 session: TSO logon, option `P`,
